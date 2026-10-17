@@ -8,53 +8,136 @@ zero to the trigger motors. This project hands the controller to SDL (the librar
 Steam uses for controllers), which talks to it over raw USB and can drive all four motors.
 
 **Status**
-- Works: all four motors from SDL, and Steam opening the controller over raw USB.
-- Not yet confirmed: a game's trigger rumble reaching the controller through Steam,
-  and whether a game with Steam Input disabled can open the controller while Steam holds it.
+- Works: all four motors from SDL. Steam owns the controller over raw USB, and
+  Steam Input's `TriggerVibrationExtended` reaches the trigger motors (used by the
+  [Over the Hill mod](https://github.com/kaleLetendre/over-the-hill-trigger-rumble)).
+- Doesn't work: a game's *own* trigger rumble. Through Steam Input, games see a
+  virtual Xbox 360 controller, which has no trigger motors.
 
 **Tested on**
 - Debian 13 (XFCE, SDDM login screen), kernel 6.12
 - Xbox Series X|S controller `045e:0b12`, wired
-- Steam client with bundled SDL 3.4
+- Steam installed from Debian's package (not Flatpak or Snap), with its bundled SDL 3.4
+
+Other distros with systemd and udev should work, but haven't been tried. Flatpak and
+Snap Steam haven't been tried at all.
 
 ---
 
-## Setup
+## Step-by-step setup
+
+Takes about 10 minutes. You'll type a few commands into a terminal; each step says
+exactly what to type and what you should see. If a step doesn't match, stop and
+look at [Troubleshooting](#troubleshooting) before going on.
+
+### Before you start
 
 You need:
-- the controller on a USB cable (Bluetooth isn't covered here)
-- Steam installed
-- sudo rights
 
-1. Run the installer as your normal user. It asks for your sudo password:
+- [ ] Linux, with Steam installed and working
+- [ ] An Xbox One or Xbox Series controller, **plugged in with a USB cable**
+      (Bluetooth isn't covered here)
+- [ ] An account that can use `sudo` (the installer asks for your password)
+- [ ] Git, or a way to unzip a download
 
-       ./install.sh
+Open a terminal. On most desktops, press the Super/Windows key, type `terminal`,
+and press Enter.
 
-2. Unplug the controller and plug it back in.
-3. Log out and back in, so Steam starts with the new session setting.
-4. Check it:
+### Step 1: Get the files
 
-       ./trigger-rumble status
+Either clone the repository:
 
-   You want to see:
+    git clone https://github.com/kaleLetendre/xbox-trigger-rumble.git
 
-       mode: on (trigger rumble; pads only visible to SDL/Steam)
-       xpad module: not loaded
-       pad 045e:0b12 at 3-6.3: driver usbfs (SDL/libusb)
-       steam: running with SDL_HIDAPI_LIBUSB_WHITELIST=0
+or download it: on the GitHub page, click **Code → Download ZIP**, then unzip it in
+your home folder. That gives you a folder named `xbox-trigger-rumble-main`; use that
+name instead in the next command.
 
-   `driver usbfs` means Steam (or another SDL program) is holding the controller.
-   If Steam isn't running, you'll see `driver none (unclaimed)`, which is fine.
+Go into the folder:
 
-5. Feel it. Close Steam first, because only one program can hold the controller over raw USB:
+    cd xbox-trigger-rumble
 
-       steam -shutdown
-       python3 scripts/sdl_trigger_test.py --libusb
+### Step 2: Run the installer
 
-   It should print `trigger rumble: True`. The grips buzz, then the left trigger,
-   then the right trigger. Start Steam again afterwards.
+    ./install.sh
 
-The setup survives reboots. Everything lives in `/etc` and your home directory.
+When it asks `[sudo] password for <you>:`, type your login password and press
+Enter. Nothing appears on screen while you type the password; that's normal.
+
+It ends with:
+
+    Done. Log out and back in so Steam starts with the session setting, then check:
+
+If it stops earlier with an error instead, nothing was half-installed past that
+point. See [Troubleshooting](#troubleshooting).
+
+### Step 3: Replug the controller
+
+Unplug the USB cable from the controller and plug it back in. This applies the new
+USB permission to the controller.
+
+### Step 4: Log out and back in
+
+Use your desktop's normal **Log Out** (not just locking the screen), then log in
+again. A reboot works too.
+
+This step matters: Steam only picks up the new setting when it starts in a fresh
+login session.
+
+### Step 5: Turn on Steam Input for Xbox controllers
+
+In `on` mode, games only get your controller through Steam Input, and Steam leaves
+it **off** for Xbox controllers by default. Without this, games see no controller.
+
+1. Open Steam.
+2. Click **Steam** (top-left menu) → **Settings** → **Controller**.
+3. Turn on **Enable Steam Input for Xbox controllers**.
+
+To do it for one game only instead: right-click the game in your library →
+**Properties** → **Controller** → set the override to **Enable Steam Input**.
+
+### Step 6: Check everything
+
+Back in the terminal, in the `xbox-trigger-rumble` folder, with Steam running:
+
+    ./trigger-rumble status
+
+You want all four lines to look like this (your pad ID and USB port may differ):
+
+    mode: on (trigger rumble; pads only visible to SDL/Steam)
+    xpad module: not loaded
+    pad 045e:0b12 at 3-6.3: driver usbfs (SDL/libusb)
+    steam: running with SDL_HIDAPI_LIBUSB_WHITELIST=0
+
+What each line means:
+
+| Line | Good | If not |
+|---|---|---|
+| `mode:` | `on` | Run `./trigger-rumble on` |
+| `xpad module:` | `not loaded` | Replug the controller, or reboot |
+| `pad ... driver` | `usbfs (SDL/libusb)`: Steam is holding it | `none` while Steam runs: replug the controller |
+| `steam:` | `running with ...=0` | See [Steam can't see the controller](#troubleshooting) |
+
+If there's no `pad` line at all, the controller isn't connected by USB, or it isn't
+an Xbox One/Series-style controller.
+
+### Step 7 (optional): Feel the trigger motors
+
+This test talks to the controller directly, so Steam has to let go of it first:
+
+    steam -shutdown
+    python3 scripts/sdl_trigger_test.py --libusb
+
+It prints `trigger rumble: True`, then buzzes the grips, the left trigger, and the
+right trigger, about one second each. Start Steam again afterwards.
+
+### Step 8: Use it in a game
+
+Games don't use the trigger motors through Steam on their own (see Status above).
+You need something that asks Steam for trigger rumble, like the
+[Over the Hill mod](https://github.com/kaleLetendre/over-the-hill-trigger-rumble).
+
+That's it. The setup survives reboots, and you don't need to run anything again.
 
 ### What install.sh changes
 
@@ -111,6 +194,59 @@ Plug in the controller and play. The mode stays on across reboots.
   `found 0 gamepad(s)`), Steam Input is off for that game. See the box above.
 - **After a Steam update**, if trigger rumble stops but grips still work, rerun
   the test in step 5 of Setup. Steam bundles its own SDL, and an update can change it.
+
+---
+
+## Troubleshooting
+
+Start with `./trigger-rumble status`. It shows most problems.
+
+**A game sees no controller (menus don't react to the pad)**
+Steam Input is off for that game. Do [Step 5](#step-5-turn-on-steam-input-for-xbox-controllers),
+then quit and restart the game. Unity games log `found 0 gamepad(s)` when this happens.
+
+**Steam can't see the controller / `status` says `steam: running WITHOUT ...`**
+Steam was started without the session setting. That happens before you've logged
+out and in once after installing, or when Steam restarts itself (e.g. after an
+update). Fix it now:
+
+    steam -shutdown
+    SDL_HIDAPI_LIBUSB_WHITELIST=0 steam
+
+If it keeps coming back after every login, your login screen may not read
+`~/.xprofile`. Wayland sessions (GNOME, KDE) read `~/.config/environment.d`
+instead, and `install.sh` writes both. Open an issue with your distro and desktop.
+
+**`pad ... driver none` while Steam is running**
+Unplug the controller and plug it back in. If that doesn't help, restart Steam
+with the two commands above.
+
+**`xpad module: loaded` in `on` mode**
+Something loaded it again. Run `./trigger-rumble on`, then replug the controller.
+
+**`mode: MIXED`**
+Only one of the two system files is in place. Run `./trigger-rumble on` (or `off`).
+
+**`install.sh` fails with `sudo: command not found` or "not in the sudoers file"**
+Your account can't use sudo. Ask whoever administers the machine, or run it from
+an account that can.
+
+**`./install.sh: Permission denied`**
+The download lost its executable flag (common with ZIP downloads). Run:
+
+    chmod +x install.sh uninstall.sh trigger-rumble
+
+**`sdl_trigger_test.py` says `no gamepads found`**
+Steam is still holding the controller. Run `steam -shutdown` first. If Steam isn't
+at `~/.steam/steam`, pass its SDL library: `--sdl /path/to/ubuntu12_64/libSDL3.so.0`.
+
+**The trigger motors stopped working after a Steam update**
+Run Step 7 again. Steam bundles its own SDL, and an update can change it. Open an
+issue with the output.
+
+**Something else uses the controller and stopped working** (a browser game, an emulator)
+That's expected in `on` mode. See [Interactions with other programs](#interactions-with-other-programs).
+Switch with `./trigger-rumble off` while you use it, and `./trigger-rumble on` after.
 
 ---
 
