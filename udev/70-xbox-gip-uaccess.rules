@@ -1,0 +1,6 @@
+# Let the logged-in user open the raw USB node of wired Xbox One / Series pads,
+# so SDL (incl. Steam's bundled SDL3) can drive them over libusb instead of the
+# kernel xpad evdev device. Raw USB is the only path to the impulse-trigger motors.
+# Matches the GIP interface signature (class ff, subclass 47, protocol d0), so it
+# covers any wired GIP pad, not one product ID.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:ff47d0:*", TAG+="uaccess"

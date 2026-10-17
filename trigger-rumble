@@ -1,0 +1,88 @@
+#!/bin/sh
+# Switch the machine between trigger-rumble mode and the stock xpad setup.
+#
+#   ./trigger-rumble on       SDL/Steam own Xbox pads over libusb (trigger motors work)
+#   ./trigger-rumble off      stock: kernel xpad driver, pads visible to every program
+#   ./trigger-rumble status   show the current mode
+#
+# The two system pieces (udev access rule + xpad blacklist) always switch
+# together. With raw USB access but xpad loaded, SDL and xpad fight over the pad
+# and it stops working everywhere. The SDL_HIDAPI_LIBUSB_WHITELIST=0 session
+# hint stays set in both modes: without raw USB access it does nothing.
+# Takes effect immediately; Steam doesn't need a restart.
+
+cd "$(dirname "$0")"
+
+RULE=/etc/udev/rules.d/70-xbox-gip-uaccess.rules
+OLD_RULE=/etc/udev/rules.d/70-xbox-series-usb-uaccess.rules
+BLACKLIST=/etc/modprobe.d/blacklist-xpad.conf
+
+# Re-run udev on connected Xbox pads so the access change applies without a replug.
+retrigger() {
+    sudo udevadm trigger --subsystem-match=usb --property-match='ID_USB_INTERFACES=*:ff47d0:*'
+}
+
+status() {
+    if [ -f "$RULE" ] && [ -f "$BLACKLIST" ]; then
+        echo "mode: on (trigger rumble; pads only visible to SDL/Steam)"
+    elif [ ! -f "$RULE" ] && [ ! -f "$BLACKLIST" ]; then
+        echo "mode: off (stock xpad)"
+    else
+        echo "mode: MIXED, run '$0 on' or '$0 off' to fix"
+        echo "  udev rule: $([ -f "$RULE" ] && echo present || echo absent)"
+        echo "  xpad blacklist: $([ -f "$BLACKLIST" ] && echo present || echo absent)"
+    fi
+    if lsmod | grep -q '^xpad '; then
+        echo "xpad module: loaded"
+    else
+        echo "xpad module: not loaded"
+    fi
+    for intf in /sys/bus/usb/devices/*:1.0; do
+        [ "$(cat "$intf/bInterfaceClass" "$intf/bInterfaceSubClass" "$intf/bInterfaceProtocol" 2>/dev/null | tr -d '\n')" = ff47d0 ] || continue
+        dev=${intf%:1.0}
+        drv=$(basename "$(readlink "$intf/driver")" 2>/dev/null)
+        echo "pad $(cat "$dev/idVendor"):$(cat "$dev/idProduct") at ${dev##*/}: driver ${drv:-none}" \
+             "($( [ "$drv" = usbfs ] && echo 'SDL/libusb' || { [ "$drv" = xpad ] && echo 'kernel' || echo 'unclaimed'; } ))"
+    done
+    # In "on" mode a Steam started without the hint can't see the pad at all.
+    steam_pid=$(pgrep -x steam | head -n 1)
+    if [ -z "$steam_pid" ]; then
+        echo "steam: not running"
+    elif tr '\0' '\n' < "/proc/$steam_pid/environ" | grep -qx 'SDL_HIDAPI_LIBUSB_WHITELIST=0'; then
+        echo "steam: running with SDL_HIDAPI_LIBUSB_WHITELIST=0"
+    else
+        echo "steam: running WITHOUT SDL_HIDAPI_LIBUSB_WHITELIST=0 (won't see the pad in on mode;"
+        echo "       log out and in, or: steam -shutdown, then SDL_HIDAPI_LIBUSB_WHITELIST=0 steam)"
+    fi
+}
+
+case "$1" in
+on)
+    # Stop at the first failed step, so a half-switched state is visible.
+    set -e
+    sudo rm -f "$OLD_RULE"
+    sudo install -m 644 udev/70-xbox-gip-uaccess.rules "$RULE"
+    sudo install -m 644 modprobe/blacklist-xpad.conf "$BLACKLIST"
+    sudo udevadm control --reload
+    if lsmod | grep -q '^xpad '; then
+        sudo modprobe -r xpad
+    fi
+    retrigger
+    echo "on. If Steam doesn't pick the pad up within ~10 s, replug it."
+    ;;
+off)
+    set -e
+    sudo rm -f "$RULE" "$OLD_RULE" "$BLACKLIST"
+    sudo udevadm control --reload
+    retrigger
+    sudo modprobe xpad
+    echo "off. If the pad doesn't show up as /dev/input/js*, replug it."
+    ;;
+status)
+    status
+    ;;
+*)
+    echo "usage: $0 on|off|status" >&2
+    exit 2
+    ;;
+esac
