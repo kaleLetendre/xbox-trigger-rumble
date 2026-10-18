@@ -146,10 +146,14 @@ That's it. The setup survives reboots, and you don't need to run anything again.
 | udev rule | `/etc/udev/rules.d/70-xbox-gip-uaccess.rules` | Lets your user open the controller's raw USB device. It's root-only by default. |
 | xpad blacklist | `/etc/modprobe.d/blacklist-xpad.conf` | Stops the kernel driver from taking the controller first (see [How it works](#how-it-works)). |
 | Session setting | `~/.xprofile` and `~/.config/environment.d/60-sdl-libusb.conf` | Sets `SDL_HIDAPI_LIBUSB_WHITELIST=0` so Steam's SDL is allowed to use raw USB for the controller. |
+| Steam launcher | `~/.local/share/applications/steam.desktop` (and `~/.config/autostart/steam.desktop` if you have one) | A copy of Steam's launcher that starts Steam with the same setting. |
 
 The session setting goes in two files because desktops differ. `~/.xprofile` is
-read by X11 login screens (SDDM, LightDM, GDM on X11), which covers XFCE.
+read by X11 login screens (SDDM, LightDM, GDM on X11), which covers most XFCE setups.
 `environment.d` is read by systemd-managed sessions (GNOME/KDE on Wayland).
+Some sessions read neither (seen with XFCE + i3): after a reboot, Steam then
+starts without the setting and can't see the controller at all. The Steam
+launcher covers that: starting Steam from the app menu always sets it.
 
 ---
 
@@ -213,9 +217,11 @@ update). Fix it now:
     steam -shutdown
     SDL_HIDAPI_LIBUSB_WHITELIST=0 steam
 
-If it keeps coming back after every login, your login screen may not read
-`~/.xprofile`. Wayland sessions (GNOME, KDE) read `~/.config/environment.d`
-instead, and `install.sh` writes both. Open an issue with your distro and desktop.
+If it keeps coming back after every login, your session reads neither
+`~/.xprofile` nor `~/.config/environment.d`. Start Steam from the app menu
+(the launcher `install.sh` writes sets the setting), or re-run `./install.sh`
+if a Steam update replaced that launcher. If Steam is started some other way
+(a terminal, a keybinding), give it the setting there too.
 
 **`pad ... driver none` while Steam is running**
 Unplug the controller and plug it back in. If that doesn't help, restart Steam
@@ -272,7 +278,8 @@ change both.
     ./uninstall.sh
 
 This switches to `off`, then deletes the session setting from `~/.xprofile` and
-`environment.d`. Log out and back in afterwards.
+`environment.d`, and removes the Steam launcher copy (putting back one you had
+before). Log out and back in afterwards.
 
 ---
 

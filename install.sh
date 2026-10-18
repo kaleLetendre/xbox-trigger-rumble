@@ -5,7 +5,10 @@
 #
 #   1. SDL_HIDAPI_LIBUSB_WHITELIST=0 for your desktop session (~/.xprofile for
 #      X11 display managers, ~/.config/environment.d for systemd/Wayland sessions)
-#   2. ./trigger-rumble on  (udev access rule + xpad blacklist)
+#   2. A Steam launcher (~/.local/share/applications/steam.desktop, and the
+#      autostart entry if there is one) that sets it too: some sessions (e.g.
+#      XFCE with i3) read neither file, and then Steam can't see the pad at all
+#   3. ./trigger-rumble on  (udev access rule + xpad blacklist)
 #
 # Switch modes later with ./trigger-rumble on|off|status. Remove everything
 # with ./uninstall.sh.
@@ -31,12 +34,47 @@ $MARK_END
 EOF
 fi
 
+echo "== Steam launcher"
+# Copy of Steam's own launcher with every Exec line run through env. Marked so
+# uninstall.sh only removes our copy. A file we didn't write is kept as .bak.
+STEAM_MARK="# Written by xbox-trigger-rumble install.sh"
+steam_launcher() {
+    src=$1
+    dst=$2
+    if [ -f "$dst" ] && [ ! -L "$dst" ] && ! grep -qF "$STEAM_MARK" "$dst"; then
+        cp "$dst" "$dst.bak-xbox-trigger-rumble"
+    fi
+    {
+        echo "$STEAM_MARK"
+        sed -e 's#^Exec=\(env SDL_HIDAPI_LIBUSB_WHITELIST=0 \)*#Exec=env SDL_HIDAPI_LIBUSB_WHITELIST=0 #' "$src"
+    } > "$dst.tmp"
+    mv -f "$dst.tmp" "$dst"
+    echo "  $dst"
+}
+STEAM_SRC=""
+for f in /usr/share/applications/steam.desktop ~/.steam/debian-installation/deb-installer/steam.desktop; do
+    if [ -f "$f" ]; then
+        STEAM_SRC=$f
+        break
+    fi
+done
+if [ -n "$STEAM_SRC" ]; then
+    mkdir -p ~/.local/share/applications
+    steam_launcher "$STEAM_SRC" ~/.local/share/applications/steam.desktop
+    if [ -e ~/.config/autostart/steam.desktop ]; then
+        steam_launcher "$STEAM_SRC" ~/.config/autostart/steam.desktop
+    fi
+else
+    echo "  no steam.desktop found; start Steam with: SDL_HIDAPI_LIBUSB_WHITELIST=0 steam"
+fi
+
 echo "== trigger-rumble mode on"
 ./trigger-rumble on
 
 cat <<'EOF'
 
-Done. Log out and back in so Steam starts with the session setting, then check:
+Done. Quit Steam (steam -shutdown) and start it again from your app menu, or log
+out and back in, so Steam starts with the setting. Then check:
   ./trigger-rumble status
   python3 scripts/sdl_trigger_test.py --libusb
 EOF

@@ -52,7 +52,8 @@ status() {
         echo "steam: running with SDL_HIDAPI_LIBUSB_WHITELIST=0"
     else
         echo "steam: running WITHOUT SDL_HIDAPI_LIBUSB_WHITELIST=0 (won't see the pad in on mode;"
-        echo "       log out and in, or: steam -shutdown, then SDL_HIDAPI_LIBUSB_WHITELIST=0 steam)"
+        echo "       run: steam -shutdown, then start Steam from the app menu (install.sh's launcher"
+        echo "       sets it), or: SDL_HIDAPI_LIBUSB_WHITELIST=0 steam)"
     fi
 }
 

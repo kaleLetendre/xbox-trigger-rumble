@@ -16,4 +16,15 @@ if [ -f ~/.xprofile ]; then
     sed -i "/^$MARK_BEGIN\$/,/^$MARK_END\$/d" ~/.xprofile
 fi
 
+# Our Steam launcher copies; a launcher the user had before is put back.
+STEAM_MARK="# Written by xbox-trigger-rumble install.sh"
+for f in ~/.local/share/applications/steam.desktop ~/.config/autostart/steam.desktop; do
+    if [ -f "$f" ] && grep -qF "$STEAM_MARK" "$f"; then
+        rm -f "$f"
+        if [ -f "$f.bak-xbox-trigger-rumble" ]; then
+            mv "$f.bak-xbox-trigger-rumble" "$f"
+        fi
+    fi
+done
+
 echo "Removed. Log out and back in to clear the session setting."
